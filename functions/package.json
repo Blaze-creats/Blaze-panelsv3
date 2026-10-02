@@ -1,0 +1,19 @@
+{
+  "name": "blaze-panels-functions",
+  "description": "Blaze Panels Firebase Cloud Functions",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "latest",
+    "firebase-functions": "latest"
+  },
+  "private": true
+}
