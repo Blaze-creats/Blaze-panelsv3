@@ -36,7 +36,7 @@ import {
 
 
 /* =========================================================
-   INITIALIZE FIREBASE
+   FIREBASE
 ========================================================= */
 
 const app = initializeApp(firebaseConfig);
@@ -68,12 +68,7 @@ const $ = (id) =>
 let editId = null;
 
 
-/* =========================================================
-   ESCAPE HTML
-========================================================= */
-
 function esc(value) {
-
   return String(value ?? "").replace(
     /[&<>"']/g,
     (m) =>
@@ -85,12 +80,11 @@ function esc(value) {
         "'": "&#39;"
       }[m])
   );
-
 }
 
 
 /* =========================================================
-   NETLIFY SERVER PUSH
+   NETLIFY REAL PUSH NOTIFICATION
 ========================================================= */
 
 async function sendServerPush({
@@ -100,84 +94,53 @@ async function sendServerPush({
   message,
   url = "/"
 }) {
-
-  const user =
-    auth.currentUser;
+  const user = auth.currentUser;
 
   if (!user) {
-
     throw new Error(
       "Admin login required."
     );
-
   }
-
 
   const idToken =
     await user.getIdToken(true);
 
+  const response = await fetch(
+    "/.netlify/functions/send-notification",
+    {
+      method: "POST",
 
-  const response =
-    await fetch(
-      "/.netlify/functions/send-notification",
-      {
+      headers: {
+        "Content-Type":
+          "application/json",
 
-        method:
-          "POST",
+        "Authorization":
+          `Bearer ${idToken}`
+      },
 
-        headers:
-          {
-            "Content-Type":
-              "application/json",
-
-            "Authorization":
-              `Bearer ${idToken}`
-          },
-
-        body:
-          JSON.stringify({
-
-            type:
-              type,
-
-            userId:
-              userId,
-
-            title:
-              title,
-
-            message:
-              message,
-
-            url:
-              url
-
-          })
-
-      }
-    );
-
+      body: JSON.stringify({
+        type,
+        userId,
+        title,
+        message,
+        url
+      })
+    }
+  );
 
   const result =
     await response
       .json()
-      .catch(
-        () => ({})
-      );
-
+      .catch(() => ({}));
 
   if (!response.ok) {
-
     throw new Error(
       result.error ||
       "Push notification failed."
     );
-
   }
 
-
   return result;
-
 }
 
 
@@ -189,64 +152,44 @@ async function uploadToCloudinary(
   file,
   folder = "blaze-panels"
 ) {
-
-  if (!file) {
-
-    return "";
-
-  }
-
+  if (!file) return "";
 
   const endpoint =
     `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
 
-
   const formData =
     new FormData();
-
 
   formData.append(
     "file",
     file
   );
 
-
   formData.append(
     "upload_preset",
     CLOUDINARY_UPLOAD_PRESET
   );
-
 
   formData.append(
     "folder",
     folder
   );
 
-
   const response =
-    await fetch(
-      endpoint,
-      {
-        method:
-          "POST",
-
-        body:
-          formData
-      }
-    );
-
+    await fetch(endpoint, {
+      method: "POST",
+      body: formData
+    });
 
   const data =
     await response.json();
-
 
   if (
     !response.ok ||
     !data.secure_url
   ) {
-
     console.error(
-      "Cloudinary upload response:",
+      "Cloudinary error:",
       data
     );
 
@@ -254,12 +197,9 @@ async function uploadToCloudinary(
       data.error?.message ||
       "Cloudinary upload failed."
     );
-
   }
 
-
   return data.secure_url;
-
 }
 
 
@@ -268,36 +208,28 @@ async function uploadToCloudinary(
 ========================================================= */
 
 async function currentUser() {
+  return new Promise((resolve) => {
 
-  return new Promise(
-    (resolve) => {
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          unsubscribe();
+          resolve(user);
+        }
+      );
 
-      const unsubscribe =
-        onAuthStateChanged(
-          auth,
-          (user) => {
-
-            unsubscribe();
-
-            resolve(user);
-
-          }
-        );
-
-    }
-  );
-
+  });
 }
 
 
 /* =========================================================
-   CREATE USER DOCUMENT
+   ENSURE USER
 ========================================================= */
 
 async function ensureUser(user) {
 
   if (!user) return;
-
 
   const userRef =
     doc(
@@ -306,44 +238,34 @@ async function ensureUser(user) {
       user.uid
     );
 
-
   const snapshot =
-    await getDoc(
-      userRef
-    );
-
+    await getDoc(userRef);
 
   if (!snapshot.exists()) {
 
     await setDoc(
       userRef,
       {
-
         name:
-          user.displayName ||
-          "",
+          user.displayName || "",
 
         email:
-          user.email ||
-          "",
+          user.email || "",
 
         role:
           "customer",
 
         createdAt:
           serverTimestamp()
-
       }
     );
 
   }
-
 }
 
 
 /* =========================================================
-   FIREBASE CLOUD MESSAGING
-   REQUEST PERMISSION + SAVE TOKEN
+   SAVE FCM TOKEN
 ========================================================= */
 
 async function saveToken(user) {
@@ -352,15 +274,13 @@ async function saveToken(user) {
 
     if (!user) return;
 
-
     if (!("Notification" in window)) {
 
       console.log(
-        "This browser does not support notifications."
+        "Notifications are not supported."
       );
 
       return;
-
     }
 
 
@@ -372,10 +292,8 @@ async function saveToken(user) {
       const permission =
         await Notification.requestPermission();
 
-
       if (
-        permission !==
-        "granted"
+        permission !== "granted"
       ) {
 
         console.log(
@@ -383,9 +301,7 @@ async function saveToken(user) {
         );
 
         return;
-
       }
-
     }
 
 
@@ -395,36 +311,29 @@ async function saveToken(user) {
     ) {
 
       console.log(
-        "Notification permission is not granted."
+        "Notification permission not granted."
       );
 
       return;
-
     }
 
 
     const registration =
-      await navigator.serviceWorker.register(
-        "/firebase-messaging-sw.js"
-      );
-
-
-    console.log(
-      "Firebase Messaging Service Worker registered."
-    );
+      await navigator
+        .serviceWorker
+        .register(
+          "/firebase-messaging-sw.js"
+        );
 
 
     const token =
       await getToken(
         messaging,
         {
-
-          vapidKey:
-            vapidKey,
+          vapidKey,
 
           serviceWorkerRegistration:
             registration
-
         }
       );
 
@@ -432,18 +341,11 @@ async function saveToken(user) {
     if (!token) {
 
       console.log(
-        "FCM token was not generated."
+        "FCM token not generated."
       );
 
       return;
-
     }
-
-
-    console.log(
-      "FCM Token generated:",
-      token
-    );
 
 
     await setDoc(
@@ -453,49 +355,43 @@ async function saveToken(user) {
         token
       ),
       {
-
         userId:
           user.uid,
 
-        token:
-          token,
+        token,
 
         email:
-          user.email ||
-          "",
+          user.email || "",
 
         updatedAt:
           serverTimestamp(),
 
         createdAt:
           serverTimestamp()
-
       },
       {
-        merge:
-          true
+        merge: true
       }
     );
 
 
     console.log(
-      "FCM token successfully saved to Firestore."
+      "FCM token saved."
     );
 
   } catch (error) {
 
     console.error(
-      "FCM notification setup error:",
+      "FCM setup error:",
       error
     );
 
   }
-
 }
 
 
 /* =========================================================
-   FOREGROUND MESSAGE
+   FOREGROUND PUSH
 ========================================================= */
 
 onMessage(
@@ -503,7 +399,7 @@ onMessage(
   (payload) => {
 
     console.log(
-      "Foreground FCM message received:",
+      "Foreground FCM:",
       payload
     );
 
@@ -531,25 +427,21 @@ onMessage(
         new Notification(
           title,
           {
-
-            body:
-              body,
+            body,
 
             icon:
               "/assets/icon.svg"
-
           }
         );
 
       } catch (error) {
 
         console.log(
-          "Foreground browser notification error:",
+          "Foreground notification error:",
           error
         );
 
       }
-
     }
 
 
@@ -558,11 +450,7 @@ onMessage(
 
 
     if (user) {
-
-      notifications(
-        user
-      );
-
+      notifications(user);
     }
 
   }
@@ -577,7 +465,6 @@ async function panels() {
 
   if (!$("panels")) return;
 
-
   try {
 
     const snapshot =
@@ -589,30 +476,22 @@ async function panels() {
       );
 
 
-    $("panels").innerHTML =
-      "";
+    $("panels").innerHTML = "";
 
 
     if (snapshot.empty) {
 
       $("panels").innerHTML = `
-
         <div class="card">
-
-          <h3>
-            No panels available
-          </h3>
+          <h3>No panels available</h3>
 
           <p class="muted">
             New panels will appear here.
           </p>
-
         </div>
-
       `;
 
       return;
-
     }
 
 
@@ -624,7 +503,6 @@ async function panels() {
 
 
         $("panels").innerHTML += `
-
           <article class="panel">
 
             <img
@@ -653,8 +531,7 @@ async function panels() {
 
             <div class="price">
               ₹${esc(
-                p.price ||
-                0
+                p.price || 0
               )}
             </div>
 
@@ -666,9 +543,7 @@ async function panels() {
             </a>
 
           </article>
-
         `;
-
       }
     );
 
@@ -680,7 +555,6 @@ async function panels() {
     );
 
   }
-
 }
 
 
@@ -696,15 +570,12 @@ async function orders(user) {
   if (!user) {
 
     $("orders").innerHTML = `
-
       <div class="card">
         Please login to view your orders.
       </div>
-
     `;
 
     return;
-
   }
 
 
@@ -712,7 +583,6 @@ async function orders(user) {
 
     const q =
       query(
-
         collection(
           db,
           "orders"
@@ -728,7 +598,6 @@ async function orders(user) {
           "createdAt",
           "desc"
         )
-
       );
 
 
@@ -736,14 +605,12 @@ async function orders(user) {
       await getDocs(q);
 
 
-    $("orders").innerHTML =
-      "";
+    $("orders").innerHTML = "";
 
 
     if (snapshot.empty) {
 
       $("orders").innerHTML = `
-
         <div class="card">
 
           <h3>
@@ -751,15 +618,14 @@ async function orders(user) {
           </h3>
 
           <p class="muted">
-            Your purchased panels will appear here.
+            Your purchased panels
+            will appear here.
           </p>
 
         </div>
-
       `;
 
       return;
-
     }
 
 
@@ -770,8 +636,7 @@ async function orders(user) {
           document.data();
 
 
-        let buttons =
-          "";
+        let buttons = "";
 
 
         if (
@@ -780,13 +645,11 @@ async function orders(user) {
         ) {
 
           buttons = `
-
             <div>
 
               ${
                 o.apkUrl
                   ? `
-
                     <a
                       class="btn"
                       href="${esc(
@@ -797,15 +660,14 @@ async function orders(user) {
                     >
                       Download APK
                     </a>
-
                   `
                   : ""
               }
 
+
               ${
                 o.setupUrl
                   ? `
-
                     <a
                       class="btn"
                       href="${esc(
@@ -816,20 +678,16 @@ async function orders(user) {
                     >
                       Setup Video
                     </a>
-
                   `
                   : ""
               }
 
             </div>
-
           `;
-
         }
 
 
         $("orders").innerHTML += `
-
           <div class="card order">
 
             <div>
@@ -842,28 +700,21 @@ async function orders(user) {
               </b>
 
               <p class="muted">
-
                 Status:
                 ${esc(
                   o.status ||
                   "pending"
                 )}
-
               </p>
+
 
               ${
                 o.utr
                   ? `
-
                     <p class="muted">
-
                       UTR:
-                      ${esc(
-                        o.utr
-                      )}
-
+                      ${esc(o.utr)}
                     </p>
-
                   `
                   : ""
               }
@@ -873,7 +724,6 @@ async function orders(user) {
             ${buttons}
 
           </div>
-
         `;
 
       }
@@ -888,20 +738,17 @@ async function orders(user) {
 
 
     $("orders").innerHTML = `
-
       <div class="card">
         Unable to load orders.
       </div>
-
     `;
 
   }
-
 }
 
 
 /* =========================================================
-   LOAD NOTIFICATIONS
+   NOTIFICATIONS
 ========================================================= */
 
 async function notifications(user) {
@@ -915,7 +762,6 @@ async function notifications(user) {
 
     const q =
       query(
-
         collection(
           db,
           "notifications"
@@ -931,7 +777,6 @@ async function notifications(user) {
           "createdAt",
           "desc"
         )
-
       );
 
 
@@ -946,15 +791,12 @@ async function notifications(user) {
     if (snapshot.empty) {
 
       $("notifications").innerHTML = `
-
         <div class="card">
           No notifications yet.
         </div>
-
       `;
 
       return;
-
     }
 
 
@@ -962,8 +804,7 @@ async function notifications(user) {
       "<h3>Notifications</h3>";
 
 
-    let unread =
-      0;
+    let unread = 0;
 
 
     snapshot.forEach(
@@ -976,14 +817,11 @@ async function notifications(user) {
         if (
           n.read !== true
         ) {
-
           unread++;
-
         }
 
 
         $("notifications").innerHTML += `
-
           <div class="card">
 
             <b>
@@ -1001,7 +839,6 @@ async function notifications(user) {
             </p>
 
           </div>
-
         `;
 
       }
@@ -1037,12 +874,11 @@ async function notifications(user) {
     );
 
   }
-
 }
 
 
 /* =========================================================
-   CHECKOUT / BUY PAGE
+   CHECKOUT
 ========================================================= */
 
 async function checkout() {
@@ -1077,7 +913,6 @@ async function checkout() {
         "Panel not found";
 
       return;
-
     }
 
 
@@ -1092,29 +927,24 @@ async function checkout() {
 
     $("price").textContent =
       "₹" +
-      (
-        panel.price ||
-        0
-      );
+      (panel.price || 0);
 
 
     if ($("upi")) {
 
       $("upi").textContent =
-        panel.upi ||
-        "";
+        panel.upi || "";
 
     }
 
 
     window.checkoutPanel = {
-
       id:
         snapshot.id,
 
       ...panel
-
     };
+
 
   } catch (error) {
 
@@ -1124,7 +954,6 @@ async function checkout() {
     );
 
   }
-
 }
 
 
@@ -1145,18 +974,14 @@ $("googleLogin")?.addEventListener(
 
     try {
 
-      button.disabled =
-        true;
+      button.disabled = true;
 
       button.textContent =
         "Connecting...";
 
 
       if (msg) {
-
-        msg.textContent =
-          "";
-
+        msg.textContent = "";
       }
 
 
@@ -1164,12 +989,10 @@ $("googleLogin")?.addEventListener(
         new GoogleAuthProvider();
 
 
-      provider.setCustomParameters(
-        {
-          prompt:
-            "select_account"
-        }
-      );
+      provider.setCustomParameters({
+        prompt:
+          "select_account"
+      });
 
 
       const result =
@@ -1183,18 +1006,14 @@ $("googleLogin")?.addEventListener(
         result.user;
 
 
-      await ensureUser(
-        user
-      );
+      await ensureUser(user);
 
-
-      await saveToken(
-        user
-      );
+      await saveToken(user);
 
 
       location.href =
         "index.html";
+
 
     } catch (error) {
 
@@ -1233,8 +1052,7 @@ $("googleLogin")?.addEventListener(
       }
 
 
-      button.disabled =
-        false;
+      button.disabled = false;
 
       button.textContent =
         "Continue with Google";
@@ -1262,18 +1080,14 @@ $("googleRegister")?.addEventListener(
 
     try {
 
-      button.disabled =
-        true;
+      button.disabled = true;
 
       button.textContent =
         "Connecting...";
 
 
       if (msg) {
-
-        msg.textContent =
-          "";
-
+        msg.textContent = "";
       }
 
 
@@ -1281,12 +1095,1008 @@ $("googleRegister")?.addEventListener(
         new GoogleAuthProvider();
 
 
-      provider.setCustomParameters(
-        {
-          prompt:
-            "select_account"
+      provider.setCustomParameters({
+        prompt:
+          "select_account"
+      });
+
+
+      const result =
+        await signInWithPopupimport { firebaseConfig, vapidKey } from "./firebase-config.js";
+
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+
+import {
+  getAuth,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  addDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+import {
+  getMessaging,
+  getToken,
+  onMessage
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
+
+
+/* =========================================================
+   FIREBASE
+========================================================= */
+
+const app = initializeApp(firebaseConfig);
+
+const auth = getAuth(app);
+
+const db = getFirestore(app);
+
+const messaging = getMessaging(app);
+
+
+/* =========================================================
+   CLOUDINARY
+========================================================= */
+
+const CLOUDINARY_CLOUD_NAME = "dao40wei8";
+
+const CLOUDINARY_UPLOAD_PRESET =
+  "blaze_panels_upload";
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+const $ = (id) =>
+  document.getElementById(id);
+
+let editId = null;
+
+
+function esc(value) {
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (m) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[m])
+  );
+}
+
+
+/* =========================================================
+   NETLIFY REAL PUSH NOTIFICATION
+========================================================= */
+
+async function sendServerPush({
+  type,
+  userId = "",
+  title,
+  message,
+  url = "/"
+}) {
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error(
+      "Admin login required."
+    );
+  }
+
+  const idToken =
+    await user.getIdToken(true);
+
+  const response = await fetch(
+    "/.netlify/functions/send-notification",
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+
+        "Authorization":
+          `Bearer ${idToken}`
+      },
+
+      body: JSON.stringify({
+        type,
+        userId,
+        title,
+        message,
+        url
+      })
+    }
+  );
+
+  const result =
+    await response
+      .json()
+      .catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      result.error ||
+      "Push notification failed."
+    );
+  }
+
+  return result;
+}
+
+
+/* =========================================================
+   CLOUDINARY UPLOAD
+========================================================= */
+
+async function uploadToCloudinary(
+  file,
+  folder = "blaze-panels"
+) {
+  if (!file) return "";
+
+  const endpoint =
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+
+  const formData =
+    new FormData();
+
+  formData.append(
+    "file",
+    file
+  );
+
+  formData.append(
+    "upload_preset",
+    CLOUDINARY_UPLOAD_PRESET
+  );
+
+  formData.append(
+    "folder",
+    folder
+  );
+
+  const response =
+    await fetch(endpoint, {
+      method: "POST",
+      body: formData
+    });
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok ||
+    !data.secure_url
+  ) {
+    console.error(
+      "Cloudinary error:",
+      data
+    );
+
+    throw new Error(
+      data.error?.message ||
+      "Cloudinary upload failed."
+    );
+  }
+
+  return data.secure_url;
+}
+
+
+/* =========================================================
+   CURRENT USER
+========================================================= */
+
+async function currentUser() {
+  return new Promise((resolve) => {
+
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (user) => {
+          unsubscribe();
+          resolve(user);
         }
       );
+
+  });
+}
+
+
+/* =========================================================
+   ENSURE USER
+========================================================= */
+
+async function ensureUser(user) {
+
+  if (!user) return;
+
+  const userRef =
+    doc(
+      db,
+      "users",
+      user.uid
+    );
+
+  const snapshot =
+    await getDoc(userRef);
+
+  if (!snapshot.exists()) {
+
+    await setDoc(
+      userRef,
+      {
+        name:
+          user.displayName || "",
+
+        email:
+          user.email || "",
+
+        role:
+          "customer",
+
+        createdAt:
+          serverTimestamp()
+      }
+    );
+
+  }
+}
+
+
+/* =========================================================
+   SAVE FCM TOKEN
+========================================================= */
+
+async function saveToken(user) {
+
+  try {
+
+    if (!user) return;
+
+    if (!("Notification" in window)) {
+
+      console.log(
+        "Notifications are not supported."
+      );
+
+      return;
+    }
+
+
+    if (
+      Notification.permission ===
+      "default"
+    ) {
+
+      const permission =
+        await Notification.requestPermission();
+
+      if (
+        permission !== "granted"
+      ) {
+
+        console.log(
+          "Notification permission denied."
+        );
+
+        return;
+      }
+    }
+
+
+    if (
+      Notification.permission !==
+      "granted"
+    ) {
+
+      console.log(
+        "Notification permission not granted."
+      );
+
+      return;
+    }
+
+
+    const registration =
+      await navigator
+        .serviceWorker
+        .register(
+          "/firebase-messaging-sw.js"
+        );
+
+
+    const token =
+      await getToken(
+        messaging,
+        {
+          vapidKey,
+
+          serviceWorkerRegistration:
+            registration
+        }
+      );
+
+
+    if (!token) {
+
+      console.log(
+        "FCM token not generated."
+      );
+
+      return;
+    }
+
+
+    await setDoc(
+      doc(
+        db,
+        "deviceTokens",
+        token
+      ),
+      {
+        userId:
+          user.uid,
+
+        token,
+
+        email:
+          user.email || "",
+
+        updatedAt:
+          serverTimestamp(),
+
+        createdAt:
+          serverTimestamp()
+      },
+      {
+        merge: true
+      }
+    );
+
+
+    console.log(
+      "FCM token saved."
+    );
+
+  } catch (error) {
+
+    console.error(
+      "FCM setup error:",
+      error
+    );
+
+  }
+}
+
+
+/* =========================================================
+   FOREGROUND PUSH
+========================================================= */
+
+onMessage(
+  messaging,
+  (payload) => {
+
+    console.log(
+      "Foreground FCM:",
+      payload
+    );
+
+
+    const title =
+      payload.notification?.title ||
+      payload.data?.title ||
+      "Blaze Panels";
+
+
+    const body =
+      payload.notification?.body ||
+      payload.data?.body ||
+      "You have a new notification.";
+
+
+    if (
+      "Notification" in window &&
+      Notification.permission ===
+        "granted"
+    ) {
+
+      try {
+
+        new Notification(
+          title,
+          {
+            body,
+
+            icon:
+              "/assets/icon.svg"
+          }
+        );
+
+      } catch (error) {
+
+        console.log(
+          "Foreground notification error:",
+          error
+        );
+
+      }
+    }
+
+
+    const user =
+      auth.currentUser;
+
+
+    if (user) {
+      notifications(user);
+    }
+
+  }
+);
+
+
+/* =========================================================
+   LOAD PANELS
+========================================================= */
+
+async function panels() {
+
+  if (!$("panels")) return;
+
+  try {
+
+    const snapshot =
+      await getDocs(
+        collection(
+          db,
+          "panels"
+        )
+      );
+
+
+    $("panels").innerHTML = "";
+
+
+    if (snapshot.empty) {
+
+      $("panels").innerHTML = `
+        <div class="card">
+          <h3>No panels available</h3>
+
+          <p class="muted">
+            New panels will appear here.
+          </p>
+        </div>
+      `;
+
+      return;
+    }
+
+
+    snapshot.forEach(
+      (document) => {
+
+        const p =
+          document.data();
+
+
+        $("panels").innerHTML += `
+          <article class="panel">
+
+            <img
+              src="${esc(
+                p.image ||
+                "assets/icon.svg"
+              )}"
+              alt="${esc(
+                p.title ||
+                "Panel"
+              )}"
+            >
+
+            <h3>
+              ${esc(
+                p.title
+              )}
+            </h3>
+
+            <p class="muted">
+              ${esc(
+                p.description ||
+                ""
+              )}
+            </p>
+
+            <div class="price">
+              ₹${esc(
+                p.price || 0
+              )}
+            </div>
+
+            <a
+              class="btn"
+              href="buy.html?id=${document.id}"
+            >
+              Buy Now
+            </a>
+
+          </article>
+        `;
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Loading panels failed:",
+      error
+    );
+
+  }
+}
+
+
+/* =========================================================
+   LOAD ORDERS
+========================================================= */
+
+async function orders(user) {
+
+  if (!$("orders")) return;
+
+
+  if (!user) {
+
+    $("orders").innerHTML = `
+      <div class="card">
+        Please login to view your orders.
+      </div>
+    `;
+
+    return;
+  }
+
+
+  try {
+
+    const q =
+      query(
+        collection(
+          db,
+          "orders"
+        ),
+
+        where(
+          "userId",
+          "==",
+          user.uid
+        ),
+
+        orderBy(
+          "createdAt",
+          "desc"
+        )
+      );
+
+
+    const snapshot =
+      await getDocs(q);
+
+
+    $("orders").innerHTML = "";
+
+
+    if (snapshot.empty) {
+
+      $("orders").innerHTML = `
+        <div class="card">
+
+          <h3>
+            No orders yet
+          </h3>
+
+          <p class="muted">
+            Your purchased panels
+            will appear here.
+          </p>
+
+        </div>
+      `;
+
+      return;
+    }
+
+
+    snapshot.forEach(
+      (document) => {
+
+        const o =
+          document.data();
+
+
+        let buttons = "";
+
+
+        if (
+          o.status ===
+          "approved"
+        ) {
+
+          buttons = `
+            <div>
+
+              ${
+                o.apkUrl
+                  ? `
+                    <a
+                      class="btn"
+                      href="${esc(
+                        o.apkUrl
+                      )}"
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      Download APK
+                    </a>
+                  `
+                  : ""
+              }
+
+
+              ${
+                o.setupUrl
+                  ? `
+                    <a
+                      class="btn"
+                      href="${esc(
+                        o.setupUrl
+                      )}"
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      Setup Video
+                    </a>
+                  `
+                  : ""
+              }
+
+            </div>
+          `;
+        }
+
+
+        $("orders").innerHTML += `
+          <div class="card order">
+
+            <div>
+
+              <b>
+                ${esc(
+                  o.panelTitle ||
+                  "Panel"
+                )}
+              </b>
+
+              <p class="muted">
+                Status:
+                ${esc(
+                  o.status ||
+                  "pending"
+                )}
+              </p>
+
+
+              ${
+                o.utr
+                  ? `
+                    <p class="muted">
+                      UTR:
+                      ${esc(o.utr)}
+                    </p>
+                  `
+                  : ""
+              }
+
+            </div>
+
+            ${buttons}
+
+          </div>
+        `;
+
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Loading orders failed:",
+      error
+    );
+
+
+    $("orders").innerHTML = `
+      <div class="card">
+        Unable to load orders.
+      </div>
+    `;
+
+  }
+}
+
+
+/* =========================================================
+   NOTIFICATIONS
+========================================================= */
+
+async function notifications(user) {
+
+  if (!$("notifications")) return;
+
+  if (!user) return;
+
+
+  try {
+
+    const q =
+      query(
+        collection(
+          db,
+          "notifications"
+        ),
+
+        where(
+          "userId",
+          "==",
+          user.uid
+        ),
+
+        orderBy(
+          "createdAt",
+          "desc"
+        )
+      );
+
+
+    const snapshot =
+      await getDocs(q);
+
+
+    $("notifications").innerHTML =
+      "";
+
+
+    if (snapshot.empty) {
+
+      $("notifications").innerHTML = `
+        <div class="card">
+          No notifications yet.
+        </div>
+      `;
+
+      return;
+    }
+
+
+    $("notifications").innerHTML =
+      "<h3>Notifications</h3>";
+
+
+    let unread = 0;
+
+
+    snapshot.forEach(
+      (document) => {
+
+        const n =
+          document.data();
+
+
+        if (
+          n.read !== true
+        ) {
+          unread++;
+        }
+
+
+        $("notifications").innerHTML += `
+          <div class="card">
+
+            <b>
+              ${esc(
+                n.title ||
+                "Notification"
+              )}
+            </b>
+
+            <p>
+              ${esc(
+                n.body ||
+                ""
+              )}
+            </p>
+
+          </div>
+        `;
+
+      }
+    );
+
+
+    if ($("badge")) {
+
+      if (unread > 0) {
+
+        $("badge").textContent =
+          unread > 99
+            ? "99+"
+            : String(unread);
+
+        $("badge").style.display =
+          "inline-flex";
+
+      } else {
+
+        $("badge").style.display =
+          "none";
+
+      }
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Loading notifications failed:",
+      error
+    );
+
+  }
+}
+
+
+/* =========================================================
+   CHECKOUT
+========================================================= */
+
+async function checkout() {
+
+  if (!$("title")) return;
+
+
+  const id =
+    new URLSearchParams(
+      location.search
+    ).get("id");
+
+
+  if (!id) return;
+
+
+  try {
+
+    const snapshot =
+      await getDoc(
+        doc(
+          db,
+          "panels",
+          id
+        )
+      );
+
+
+    if (!snapshot.exists()) {
+
+      $("title").textContent =
+        "Panel not found";
+
+      return;
+    }
+
+
+    const panel =
+      snapshot.data();
+
+
+    $("title").textContent =
+      panel.title ||
+      "Panel";
+
+
+    $("price").textContent =
+      "₹" +
+      (panel.price || 0);
+
+
+    if ($("upi")) {
+
+      $("upi").textContent =
+        panel.upi || "";
+
+    }
+
+
+    window.checkoutPanel = {
+      id:
+        snapshot.id,
+
+      ...panel
+    };
+
+
+  } catch (error) {
+
+    console.error(
+      "Checkout loading failed:",
+      error
+    );
+
+  }
+}
+
+
+/* =========================================================
+   GOOGLE LOGIN
+========================================================= */
+
+$("googleLogin")?.addEventListener(
+  "click",
+  async () => {
+
+    const button =
+      $("googleLogin");
+
+    const msg =
+      $("msg");
+
+
+    try {
+
+      button.disabled = true;
+
+      button.textContent =
+        "Connecting...";
+
+
+      if (msg) {
+        msg.textContent = "";
+      }
+
+
+      const provider =
+        new GoogleAuthProvider();
+
+
+      provider.setCustomParameters({
+        prompt:
+          "select_account"
+      });
 
 
       const result =
@@ -1300,38 +2110,53 @@ $("googleRegister")?.addEventListener(
         result.user;
 
 
-      await ensureUser(
-        user
-      );
+      await ensureUser(user);
 
-
-      await saveToken(
-        user
-      );
+      await saveToken(user);
 
 
       location.href =
         "index.html";
 
+
     } catch (error) {
 
       console.error(
-        "Google registration failed:",
+        "Google login failed:",
         error
       );
 
 
       if (msg) {
 
-        msg.textContent =
-          error.message ||
-          "Google registration failed.";
+        if (
+          error.code ===
+          "auth/popup-closed-by-user"
+        ) {
+
+          msg.textContent =
+            "Google login cancelled.";
+
+        } else if (
+          error.code ===
+          "auth/popup-blocked"
+        ) {
+
+          msg.textContent =
+            "Popup was blocked. Please allow popups and try again.";
+
+        } else {
+
+          msg.textContent =
+            error.message ||
+            "Google login failed.";
+
+        }
 
       }
 
 
-      button.disabled =
-        false;
+      button.disabled = false;
 
       button.textContent =
         "Continue with Google";
@@ -1343,236 +2168,45 @@ $("googleRegister")?.addEventListener(
 
 
 /* =========================================================
-   LOGOUT
+   GOOGLE REGISTER
 ========================================================= */
 
-$("logout")?.addEventListener(
+$("googleRegister")?.addEventListener(
   "click",
   async () => {
+
+    const button =
+      $("googleRegister");
+
+    const msg =
+      $("msg");
+
 
     try {
 
-      await signOut(
-        auth
-      );
+      button.disabled = true;
+
+      button.textContent =
+        "Connecting...";
 
 
-      location.href =
-        "index.html";
-
-    } catch (error) {
-
-      console.error(
-        "Logout failed:",
-        error
-      );
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   ENABLE NOTIFICATIONS BUTTON
-========================================================= */
-
-$("notify")?.addEventListener(
-  "click",
-  async () => {
-
-    const user =
-      auth.currentUser;
-
-
-    if (!user) {
-
-      location.href =
-        "login.html";
-
-      return;
-
-    }
-
-
-    await saveToken(
-      user
-    );
-
-
-    if ($("notify")) {
-
-      $("notify").textContent =
-        Notification.permission ===
-        "granted"
-
-          ? "Notifications Enabled"
-
-          : "Notifications Not Enabled";
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   PAYMENT SUBMISSION
-   CLOUDINARY PAYMENT PROOF
-========================================================= */
-
-$("submitPayment")?.addEventListener(
-  "click",
-  async () => {
-
-    try {
-
-      const user =
-        auth.currentUser;
-
-
-      if (!user) {
-
-        location.href =
-          "login.html";
-
-        return;
-
+      if (msg) {
+        msg.textContent = "";
       }
 
 
-      const panel =
-        window.checkoutPanel;
+      const provider =
+        new GoogleAuthProvider();
 
 
-      if (!panel) {
-
-        alert(
-          "Panel information is not loaded."
-        );
-
-        return;
-
-      }
+      provider.setCustomParameters({
+        prompt:
+          "select_account"
+      });
 
 
-      const utr =
-        $("utr")?.value.trim();
-
-
-      if (!utr) {
-
-        alert(
-          "Please enter UTR."
-        );
-
-        return;
-
-      }
-
-
-      const file =
-        $("proof")?.files?.[0];
-
-
-      let proofUrl =
-        "";
-
-
-      if (file) {
-
-        proofUrl =
-          await uploadToCloudinary(
-            file,
-            `blaze-panels/payment-proofs/${user.uid}`
-          );
-
-      }
-
-
-      await addDoc(
-        collection(
-          db,
-          "orders"
-        ),
-        {
-
-          userId:
-            user.uid,
-
-          userEmail:
-            user.email ||
-            "",
-
-          panelId:
-            panel.id,
-
-          panelTitle:
-            panel.title,
-
-          amount:
-            panel.price,
-
-          utr:
-            utr,
-
-          proofUrl:
-            proofUrl,
-
-          status:
-            "pending",
-
-          createdAt:
-            serverTimestamp()
-
-        }
-      );
-
-
-      if ($("msg")) {
-
-        $("msg").textContent =
-          "Payment proof submitted. Admin approval is required.";
-
-      }
-
-
-      if ($("utr")) {
-
-        $("utr").value =
-          "";
-
-      }
-
-
-      if ($("proof")) {
-
-        $("proof").value =
-          "";
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "Payment submission failed:",
-        error
-      );
-
-
-      if ($("msg")) {
-
-        $("msg").textContent =
-          error.message;
-
-      }
-
-    }
-
-  }
-);
-
-
+      const result =
+        await signInWithPopup
 /* =========================================================
    ADMIN - SAVE PANEL
 ========================================================= */
@@ -1580,113 +2214,92 @@ $("submitPayment")?.addEventListener(
 $("save")?.addEventListener(
   "click",
   async () => {
-
     try {
-
       let image =
-        $("pimage")?.value.trim() ||
-        "";
+        $("pimage")?.value.trim() || "";
 
       let previewVideo =
-        $("ppreview")?.value.trim() ||
-        "";
+        $("ppreview")?.value.trim() || "";
 
       let setupUrl =
-        $("psetup")?.value.trim() ||
-        "";
+        $("psetup")?.value.trim() || "";
 
-      let apkUrl =
-        $("papk")?.value.trim() ||
-        "";
-
+      const apkUrl =
+        $("papk")?.value.trim() || "";
 
       const imageFile =
         $("pimageFile")?.files?.[0];
 
-
       const previewFile =
         $("ppreviewFile")?.files?.[0];
-
 
       const setupFile =
         $("psetupFile")?.files?.[0];
 
 
-      if (imageFile) {
+      /* Panel image upload */
 
+      if (imageFile) {
         image =
           await uploadToCloudinary(
             imageFile,
             "blaze-panels/panel-images"
           );
-
       }
 
 
-      if (previewFile) {
+      /* Preview video upload */
 
+      if (previewFile) {
         previewVideo =
           await uploadToCloudinary(
             previewFile,
             "blaze-panels/preview-videos"
           );
-
       }
 
 
-      if (setupFile) {
+      /* Setup video upload */
 
+      if (setupFile) {
         setupUrl =
           await uploadToCloudinary(
             setupFile,
             "blaze-panels/setup-videos"
           );
-
       }
 
 
       const panel = {
-
         title:
-          $("ptitle")?.value.trim() ||
-          "",
+          $("ptitle")?.value.trim() || "",
 
         price:
           Number(
-            $("pprice")?.value ||
-            0
+            $("pprice")?.value || 0
           ),
 
-        image:
-          image,
+        image,
 
-        previewVideo:
-          previewVideo,
+        previewVideo,
 
-        apkUrl:
-          apkUrl,
+        apkUrl,
 
-        setupUrl:
-          setupUrl,
+        setupUrl,
 
         description:
-          $("pdesc")?.value.trim() ||
-          "",
+          $("pdesc")?.value.trim() || "",
 
         updatedAt:
           serverTimestamp()
-
       };
 
 
       if (!panel.title) {
-
         alert(
           "Enter panel title."
         );
-
         return;
-
       }
 
 
@@ -1709,21 +2322,17 @@ $("save")?.addEventListener(
             "panels"
           ),
           {
-
             ...panel,
 
             createdAt:
               serverTimestamp()
-
           }
         );
 
       }
 
 
-      editId =
-        null;
-
+      editId = null;
 
       await adminPanels();
 
@@ -1739,13 +2348,11 @@ $("save")?.addEventListener(
         error
       );
 
-
       alert(
         error.message
       );
 
     }
-
   }
 );
 
@@ -1757,7 +2364,6 @@ $("save")?.addEventListener(
 async function adminPanels() {
 
   if (!$("panelList")) return;
-
 
   try {
 
@@ -1782,7 +2388,6 @@ async function adminPanels() {
 
 
         $("panelList").innerHTML += `
-
           <div class="card">
 
             <b>
@@ -1806,7 +2411,6 @@ async function adminPanels() {
             </button>
 
           </div>
-
         `;
 
       }
@@ -1820,7 +2424,6 @@ async function adminPanels() {
     );
 
   }
-
 }
 
 
@@ -1828,23 +2431,56 @@ async function adminPanels() {
    ADMIN - DELETE PANEL
 ========================================================= */
 
-window.delPanel =
-  async (id) => {
+window.delPanel = async (id) => {
 
-    try {
+  try {
 
-      if (
-        !confirm(
-          "Delete panel?"
-        )
-      ) {
-
-        return;
-
-      }
+    if (
+      !confirm(
+        "Delete panel?"
+      )
+    ) {
+      return;
+    }
 
 
-      await deleteDoc(
+    await deleteDoc(
+      doc(
+        db,
+        "panels",
+        id
+      )
+    );
+
+
+    await adminPanels();
+
+  } catch (error) {
+
+    console.error(
+      "Delete panel failed:",
+      error
+    );
+
+    alert(
+      error.message
+    );
+
+  }
+
+};
+
+
+/* =========================================================
+   ADMIN - EDIT PANEL
+========================================================= */
+
+window.editPanel = async (id) => {
+
+  try {
+
+    const snapshot =
+      await getDoc(
         doc(
           db,
           "panels",
@@ -1853,102 +2489,52 @@ window.delPanel =
       );
 
 
-      await adminPanels();
-
-    } catch (error) {
-
-      console.error(
-        "Delete panel failed:",
-        error
-      );
-
-
-      alert(
-        error.message
-      );
-
+    if (!snapshot.exists()) {
+      return;
     }
 
-  };
+
+    const panel =
+      snapshot.data();
 
 
-/* =========================================================
-   ADMIN - EDIT PANEL
-========================================================= */
-
-window.editPanel =
-  async (id) => {
-
-    try {
-
-      const snapshot =
-        await getDoc(
-          doc(
-            db,
-            "panels",
-            id
-          )
-        );
+    editId = id;
 
 
-      if (!snapshot.exists()) {
-
-        return;
-
-      }
-
-
-      const panel =
-        snapshot.data();
-
-
-      editId =
-        id;
+    const fields = [
+      ["ptitle", "title"],
+      ["pprice", "price"],
+      ["pimage", "image"],
+      ["ppreview", "previewVideo"],
+      ["papk", "apkUrl"],
+      ["psetup", "setupUrl"],
+      ["pdesc", "description"]
+    ];
 
 
-      const fields = [
+    fields.forEach(
+      ([elementId, field]) => {
 
-        ["ptitle", "title"],
+        if ($(elementId)) {
 
-        ["pprice", "price"],
-
-        ["pimage", "image"],
-
-        ["ppreview", "previewVideo"],
-
-        ["papk", "apkUrl"],
-
-        ["psetup", "setupUrl"],
-
-        ["pdesc", "description"]
-
-      ];
-
-
-      fields.forEach(
-        ([elementId, field]) => {
-
-          if ($(elementId)) {
-
-            $(elementId).value =
-              panel[field] ??
-              "";
-
-          }
+          $(elementId).value =
+            panel[field] ?? "";
 
         }
-      );
 
-    } catch (error) {
+      }
+    );
 
-      console.error(
-        "Edit panel failed:",
-        error
-      );
+  } catch (error) {
 
-    }
+    console.error(
+      "Edit panel failed:",
+      error
+    );
 
-  };
+  }
+
+};
 
 
 /* =========================================================
@@ -1959,12 +2545,10 @@ async function pending() {
 
   if (!$("pending")) return;
 
-
   try {
 
     const q =
       query(
-
         collection(
           db,
           "orders"
@@ -1975,7 +2559,6 @@ async function pending() {
           "==",
           "pending"
         )
-
       );
 
 
@@ -1993,7 +2576,6 @@ async function pending() {
         "<div>No pending orders.</div>";
 
       return;
-
     }
 
 
@@ -2005,7 +2587,6 @@ async function pending() {
 
 
         $("pending").innerHTML += `
-
           <div class="card">
 
             <b>
@@ -2015,25 +2596,19 @@ async function pending() {
             </b>
 
             <p>
-
               ₹${esc(
                 order.amount
               )}
-
               ·
-
               ${esc(
-                order.utr ||
-                ""
+                order.utr || ""
               )}
-
             </p>
 
 
             ${
               order.proofUrl
                 ? `
-
                   <a
                     href="${esc(
                       order.proofUrl
@@ -2043,7 +2618,6 @@ async function pending() {
                   >
                     View payment proof
                   </a>
-
                 `
                 : ""
             }
@@ -2068,7 +2642,6 @@ async function pending() {
             </button>
 
           </div>
-
         `;
 
       }
@@ -2088,140 +2661,645 @@ async function pending() {
 
 /* =========================================================
    ADMIN - APPROVE ORDER
+   FIRESTORE + REAL NETLIFY PUSH
 ========================================================= */
 
-window.approve =
-  async (id) => {
+window.approve = async (id) => {
 
-    try {
+  try {
 
-      const orderRef =
-        doc(
-          db,
-          "orders",
-          id
-        );
-
-
-      const orderSnapshot =
-        await getDoc(
-          orderRef
-        );
-
-
-      if (!orderSnapshot.exists()) {
-
-        return;
-
-      }
-
-
-      const order =
-        orderSnapshot.data();
-
-
-      const panelSnapshot =
-        await getDoc(
-          doc(
-            db,
-            "panels",
-            order.panelId
-          )
-        );
-
-
-      const panel =
-        panelSnapshot.exists()
-          ? panelSnapshot.data()
-          : {};
-
-
-      /* Approve order */
-
-      await updateDoc(
-        orderRef,
-        {
-
-          status:
-            "approved",
-
-          approvedAt:
-            serverTimestamp(),
-
-          apkUrl:
-            panel.apkUrl ||
-            "",
-
-          setupUrl:
-            panel.setupUrl ||
-            ""
-
-        }
+    const orderRef =
+      doc(
+        db,
+        "orders",
+        id
       );
 
 
-      /* Create Firestore notification */
+    const orderSnapshot =
+      await getDoc(
+        orderRef
+      );
 
-      await addDoc(
-        collection(
+
+    if (!orderSnapshot.exists()) {
+      return;
+    }
+
+
+    const order =
+      orderSnapshot.data();
+
+
+    if (
+      order.status !==
+      "pending"
+    ) {
+
+      alert(
+        `This order is already ${order.status}.`
+      );
+
+      await pending();
+
+      return;
+    }
+
+
+    const panelSnapshot =
+      await getDoc(
+        doc(
           db,
-          "notifications"
-        ),
-        {
+          "panels",
+          order.panelId
+        )
+      );
+
+
+    const panel =
+      panelSnapshot.exists()
+        ? panelSnapshot.data()
+        : {};
+
+
+    const approvedMessage =
+      `${order.panelTitle} is now ready. Open Your Orders to download it and view setup.`;
+
+
+    /* -----------------------------------------------------
+       1. APPROVE ORDER
+    ----------------------------------------------------- */
+
+    await updateDoc(
+      orderRef,
+      {
+        status:
+          "approved",
+
+        approvedAt:
+          serverTimestamp(),
+
+        apkUrl:
+          panel.apkUrl || "",
+
+        setupUrl:
+          panel.setupUrl || ""
+      }
+    );
+
+
+    /* -----------------------------------------------------
+       2. CREATE FIRESTORE NOTIFICATION
+    ----------------------------------------------------- */
+
+    await addDoc(
+      collection(
+        db,
+        "notifications"
+      ),
+      {
+        userId:
+          order.userId,
+
+        type:
+          "order_approved",
+
+        title:
+          "Payment approved!",
+
+        body:
+          approvedMessage,
+
+        orderId:
+          id,
+
+        url:
+          "/orders.html",
+
+        createdAt:
+          serverTimestamp(),
+
+        read:
+          false
+      }
+    );
+
+
+    /* -----------------------------------------------------
+       3. SEND REAL BROWSER PUSH THROUGH NETLIFY
+    ----------------------------------------------------- */
+
+    let pushMessage =
+      "Order approved successfully.";
+
+
+    try {
+
+      const pushResult =
+        await sendServerPush({
+          type:
+            "order_approved",
 
           userId:
             order.userId,
 
-          type:
-            "order_approved",
-
           title:
             "Payment approved!",
 
-          body:
-            `${order.panelTitle} is now ready. Open Your Orders to download it and view setup.`,
-
-          orderId:
-            id,
+          message:
+            approvedMessage,
 
           url:
-            "/orders.html",
+            "/orders.html"
+        });
+
+
+      console.log(
+        "Approval push result:",
+        pushResult
+      );
+
+
+      pushMessage =
+        `Order approved. Push sent: ${pushResult.sent ?? 0}`;
+
+    } catch (pushError) {
+
+      console.error(
+        "Approval push failed:",
+        pushError
+      );
+
+
+      /*
+       * Important:
+       * Order is already approved.
+       * Push failure should NOT undo approval.
+       */
+
+      pushMessage =
+        "Order approved, but push notification could not be sent.";
+
+    }
+
+
+    await pending();
+
+
+    alert(
+      pushMessage
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Approve order failed:",
+      error
+    );
+
+    alert(
+      error.message
+    );
+
+  }
+
+};
+
+
+/* =========================================================
+   ADMIN - REJECT ORDER
+   FIRESTORE + REAL NETLIFY PUSH
+========================================================= */
+
+window.reject = async (id) => {
+
+  try {
+
+    const orderRef =
+      doc(
+        db,
+        "orders",
+        id
+      );
+
+
+    const snapshot =
+      await getDoc(
+        orderRef
+      );
+
+
+    if (!snapshot.exists()) {
+      return;
+    }
+
+
+    const order =
+      snapshot.data();
+
+
+    if (
+      order.status !==
+      "pending"
+    ) {
+
+      alert(
+        `This order is already ${order.status}.`
+      );
+
+      await pending();
+
+      return;
+    }
+
+
+    const rejectedMessage =
+      `Your payment for ${order.panelTitle} was not approved. Please contact support.`;
+
+
+    /* -----------------------------------------------------
+       1. REJECT ORDER
+    ----------------------------------------------------- */
+
+    await updateDoc(
+      orderRef,
+      {
+        status:
+          "rejected",
+
+        rejectedAt:
+          serverTimestamp()
+      }
+    );
+
+
+    /* -----------------------------------------------------
+       2. FIRESTORE NOTIFICATION
+    ----------------------------------------------------- */
+
+    await addDoc(
+      collection(
+        db,
+        "notifications"
+      ),
+      {
+        userId:
+          order.userId,
+
+        type:
+          "order_rejected",
+
+        title:
+          "Payment needs attention",
+
+        body:
+          rejectedMessage,
+
+        orderId:
+          id,
+
+        url:
+          "/orders.html",
+
+        createdAt:
+          serverTimestamp(),
+
+        read:
+          false
+      }
+    );
+
+
+    /* -----------------------------------------------------
+       3. REAL PUSH
+    ----------------------------------------------------- */
+
+    let pushMessage =
+      "Order rejected successfully.";
+
+
+    try {
+
+      const pushResult =
+        await sendServerPush({
+          type:
+            "order_rejected",
+
+          userId:
+            order.userId,
+
+          title:
+            "Payment needs attention",
+
+          message:
+            rejectedMessage,
+
+          url:
+            "/orders.html"
+        });
+
+
+      console.log(
+        "Rejection push result:",
+        pushResult
+      );
+
+
+      pushMessage =
+        `Order rejected. Push sent: ${pushResult.sent ?? 0}`;
+
+    } catch (pushError) {
+
+      console.error(
+        "Rejection push failed:",
+        pushError
+      );
+
+
+      pushMessage =
+        "Order rejected, but push notification could not be sent.";
+
+    }
+
+
+    await pending();
+
+
+    alert(
+      pushMessage
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Reject order failed:",
+      error
+    );
+
+    alert(
+      error.message
+    );
+
+  }
+
+};
+
+
+/* =========================================================
+   ADMIN - ANNOUNCEMENT
+   SENDS TO ALL REGISTERED FCM DEVICES
+========================================================= */
+
+$("announce")?.addEventListener(
+  "click",
+  async () => {
+
+    try {
+
+      const title =
+        $("atitle")
+          ?.value
+          .trim() || "";
+
+
+      const body =
+        $("abody")
+          ?.value
+          .trim() || "";
+
+
+      if (!title || !body) {
+
+        alert(
+          "Enter announcement title and message."
+        );
+
+        return;
+      }
+
+
+      /* ---------------------------------------------------
+         GET CUSTOMER USERS
+      --------------------------------------------------- */
+
+      const usersSnapshot =
+        await getDocs(
+          query(
+            collection(
+              db,
+              "users"
+            ),
+
+            where(
+              "role",
+              "==",
+              "customer"
+            )
+          )
+        );
+
+
+      /* ---------------------------------------------------
+         CREATE IN-SITE NOTIFICATIONS
+         FOR EACH CUSTOMER
+      --------------------------------------------------- */
+
+      for (
+        const userDoc
+        of usersSnapshot.docs
+      ) {
+
+        await addDoc(
+          collection(
+            db,
+            "notifications"
+          ),
+          {
+            userId:
+              userDoc.id,
+
+            type:
+              "announcement",
+
+            title,
+
+            body,
+
+            url:
+              "/index.html",
+
+            createdAt:
+              serverTimestamp(),
+
+            read:
+              false
+          }
+        );
+
+      }
+
+
+      /* ---------------------------------------------------
+         CREATE ANNOUNCEMENT RECORD
+      --------------------------------------------------- */
+
+      await addDoc(
+        collection(
+          db,
+          "announcements"
+        ),
+        {
+          title,
+
+          body,
 
           createdAt:
-            serverTimestamp(),
-
-          read:
-            false
-
+            serverTimestamp()
         }
       );
 
 
-      /* Send REAL browser push */
+      /* ---------------------------------------------------
+         ONE REAL PUSH BROADCAST
+         DO NOT PUT THIS INSIDE THE LOOP
+      --------------------------------------------------- */
+
+      let pushMessage =
+        `Announcement created for ${usersSnapshot.size} users.`;
+
 
       try {
 
         const pushResult =
           await sendServerPush({
-
             type:
-              "order_approved",
+              "announcement",
 
-            userId:
-              order.userId,
-
-            title:
-              "Payment approved!",
+            title,
 
             message:
-              `${order.panelTitle} is now ready. Open Your Orders to download it and view setup.`,
+              body,
 
             url:
-              "/orders.html"
-
+              "/index.html"
           });
 
 
         console.log(
-          "Approval push sent:",
+          "Announcement push result:",
           pushResult
+        );
+
+
+        pushMessage =
+          `Announcement sent. Push delivered to ${pushResult.sent ?? 0} device(s).`;
+
+      } catch (pushError) {
+
+        console.error(
+          "Announcement push failed:",
+          pushError
+        );
+
+
+        pushMessage =
+          `Announcement created for ${usersSnapshot.size} users, but push notification could not be sent.`;
+
+      }
+
+
+      if ($("amsg")) {
+
+        $("amsg").textContent =
+          pushMessage;
+
+      }
+
+
+    } catch (error) {
+
+      console.error(
+        "Announcement failed:",
+        error
+      );
+
+
+      if ($("amsg")) {
+
+        $("amsg").textContent =
+          error.message;
+
+      }
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   AUTH STATE
+========================================================= */
+
+onAuthStateChanged(
+  auth,
+  async (user) => {
+
+    if (!user) {
+      return;
+    }
+
+
+    try {
+
+      await ensureUser(user);
+
+      await saveToken(user);
+
+
+      if ($("name")) {
+
+        $("name").textContent =
+          user.displayName ||
+          "Account";
+
+      }
+
+
+      if ($("email")) {
+
+        $("email").textContent =
+          user.email || "";
+
+      }
+
+
+      await orders(user);
+
+      await notifications(user);
+
+
+    } catch (error) {
+
+      console.error(
+        "User initialization failed:",
+        error
+      );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   INITIAL PAGE LOAD
+========================================================= */
+
+panels();
+
+checkout();
+
+adminPanels();
+
+pending();
