@@ -18,16 +18,59 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log("[firebase-messaging-sw.js] Background message:", payload);
+  console.log(
+    "[firebase-messaging-sw.js] Background message:",
+    payload
+  );
 
-  const notification = payload.notification || {};
+  const data = payload.data || {};
 
-  self.registration.showNotification(
-    notification.title || "Blaze Panels",
-    {
-      body: notification.body || "You have a new notification.",
-      icon: "/assets/icon.svg",
-      data: payload.data || {}
-    }
+  const title =
+    data.title ||
+    "Blaze Panels";
+
+  const body =
+    data.body ||
+    "You have a new notification.";
+
+  const url =
+    data.url ||
+    "/";
+
+  self.registration.showNotification(title, {
+    body,
+    icon: "/assets/icon.svg",
+    badge: "/assets/icon.svg",
+    data: {
+      url
+    },
+    vibrate: [200, 100, 200]
+  });
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl =
+    event.notification?.data?.url ||
+    "/";
+
+  event.waitUntil(
+    clients.matchAll({
+      type: "window",
+      includeUncontrolled: true
+    }).then((clientList) => {
+
+      for (const client of clientList) {
+        if ("focus" in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
   );
 });
