@@ -28,10 +28,6 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-/* =========================================================
-   FIREBASE CLOUD MESSAGING
-========================================================= */
-
 import {
   getMessaging,
   getToken,
@@ -72,7 +68,9 @@ const $ = (id) =>
 let editId = null;
 
 
-/* Escape HTML */
+/* =========================================================
+   ESCAPE HTML
+========================================================= */
 
 function esc(value) {
 
@@ -92,6 +90,98 @@ function esc(value) {
 
 
 /* =========================================================
+   NETLIFY SERVER PUSH
+========================================================= */
+
+async function sendServerPush({
+  type,
+  userId = "",
+  title,
+  message,
+  url = "/"
+}) {
+
+  const user =
+    auth.currentUser;
+
+  if (!user) {
+
+    throw new Error(
+      "Admin login required."
+    );
+
+  }
+
+
+  const idToken =
+    await user.getIdToken(true);
+
+
+  const response =
+    await fetch(
+      "/.netlify/functions/send-notification",
+      {
+
+        method:
+          "POST",
+
+        headers:
+          {
+            "Content-Type":
+              "application/json",
+
+            "Authorization":
+              `Bearer ${idToken}`
+          },
+
+        body:
+          JSON.stringify({
+
+            type:
+              type,
+
+            userId:
+              userId,
+
+            title:
+              title,
+
+            message:
+              message,
+
+            url:
+              url
+
+          })
+
+      }
+    );
+
+
+  const result =
+    await response
+      .json()
+      .catch(
+        () => ({})
+      );
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      result.error ||
+      "Push notification failed."
+    );
+
+  }
+
+
+  return result;
+
+}
+
+
+/* =========================================================
    CLOUDINARY UPLOAD
 ========================================================= */
 
@@ -101,7 +191,9 @@ async function uploadToCloudinary(
 ) {
 
   if (!file) {
+
     return "";
+
   }
 
 
@@ -135,8 +227,11 @@ async function uploadToCloudinary(
     await fetch(
       endpoint,
       {
-        method: "POST",
-        body: formData
+        method:
+          "POST",
+
+        body:
+          formData
       }
     );
 
@@ -145,7 +240,10 @@ async function uploadToCloudinary(
     await response.json();
 
 
-  if (!response.ok || !data.secure_url) {
+  if (
+    !response.ok ||
+    !data.secure_url
+  ) {
 
     console.error(
       "Cloudinary upload response:",
@@ -222,10 +320,12 @@ async function ensureUser(user) {
       {
 
         name:
-          user.displayName || "",
+          user.displayName ||
+          "",
 
         email:
-          user.email || "",
+          user.email ||
+          "",
 
         role:
           "customer",
@@ -361,7 +461,8 @@ async function saveToken(user) {
           token,
 
         email:
-          user.email || "",
+          user.email ||
+          "",
 
         updatedAt:
           serverTimestamp(),
@@ -371,7 +472,8 @@ async function saveToken(user) {
 
       },
       {
-        merge: true
+        merge:
+          true
       }
     );
 
@@ -408,11 +510,13 @@ onMessage(
 
     const title =
       payload.notification?.title ||
+      payload.data?.title ||
       "Blaze Panels";
 
 
     const body =
       payload.notification?.body ||
+      payload.data?.body ||
       "You have a new notification.";
 
 
@@ -1375,8 +1479,6 @@ $("submitPayment")?.addEventListener(
         "";
 
 
-      /* Upload payment screenshot to Cloudinary */
-
       if (file) {
 
         proofUrl =
@@ -1387,8 +1489,6 @@ $("submitPayment")?.addEventListener(
 
       }
 
-
-      /* Create order */
 
       await addDoc(
         collection(
@@ -1483,10 +1583,6 @@ $("save")?.addEventListener(
 
     try {
 
-      /* =====================================================
-         EXISTING URL FIELDS
-      ===================================================== */
-
       let image =
         $("pimage")?.value.trim() ||
         "";
@@ -1502,21 +1598,6 @@ $("save")?.addEventListener(
       let apkUrl =
         $("papk")?.value.trim() ||
         "";
-
-
-      /* =====================================================
-         OPTIONAL CLOUDINARY FILE INPUTS
-
-         If these IDs exist in admin.html:
-         pimageFile
-         ppreviewFile
-         psetupFile
-
-         they will upload automatically.
-
-         If they don't exist, existing URL fields
-         continue working exactly as before.
-      ===================================================== */
 
 
       const imageFile =
@@ -1562,14 +1643,6 @@ $("save")?.addEventListener(
           );
 
       }
-
-
-      /* =====================================================
-         APK IS STILL EXTERNAL LINK
-
-         Example:
-         Google Drive link
-      ===================================================== */
 
 
       const panel = {
@@ -2063,6 +2136,8 @@ window.approve =
           : {};
 
 
+      /* Approve order */
+
       await updateDoc(
         orderRef,
         {
@@ -2085,7 +2160,7 @@ window.approve =
       );
 
 
-      /* Create user notification */
+      /* Create Firestore notification */
 
       await addDoc(
         collection(
@@ -2122,345 +2197,31 @@ window.approve =
       );
 
 
-      await pending();
-
-
-      alert(
-        "Order approved."
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Approve order failed:",
-        error
-      );
-
-
-      alert(
-        error.message
-      );
-
-    }
-
-  };
-
-
-/* =========================================================
-   ADMIN - REJECT ORDER
-========================================================= */
-
-window.reject =
-  async (id) => {
-
-    try {
-
-      const orderRef =
-        doc(
-          db,
-          "orders",
-          id
-        );
-
-
-      const snapshot =
-        await getDoc(
-          orderRef
-        );
-
-
-      if (!snapshot.exists()) {
-
-        return;
-
-      }
-
-
-      const order =
-        snapshot.data();
-
-
-      await updateDoc(
-        orderRef,
-        {
-
-          status:
-            "rejected",
-
-          rejectedAt:
-            serverTimestamp()
-
-        }
-      );
-
-
-      await addDoc(
-        collection(
-          db,
-          "notifications"
-        ),
-        {
-
-          userId:
-            order.userId,
-
-          type:
-            "order_rejected",
-
-          title:
-            "Payment needs attention",
-
-          body:
-            `Your payment for ${order.panelTitle} was not approved. Please contact support.`,
-
-          orderId:
-            id,
-
-          url:
-            "/orders.html",
-
-          createdAt:
-            serverTimestamp(),
-
-          read:
-            false
-
-        }
-      );
-
-
-      await pending();
-
-
-      alert(
-        "Order rejected."
-      );
-
-    } catch (error) {
-
-      console.error(
-        "Reject order failed:",
-        error
-      );
-
-
-      alert(
-        error.message
-      );
-
-    }
-
-  };
-
-
-/* =========================================================
-   ADMIN - ANNOUNCEMENT
-========================================================= */
-
-$("announce")?.addEventListener(
-  "click",
-  async () => {
-
-    try {
-
-      const title =
-        $("atitle")?.value.trim() ||
-        "";
-
-
-      const body =
-        $("abody")?.value.trim() ||
-        "";
-
-
-      if (!title || !body) {
-
-        alert(
-          "Enter announcement title and message."
-        );
-
-        return;
-
-      }
-
-
-      const usersSnapshot =
-        await getDocs(
-          query(
-            collection(
-              db,
-              "users"
-            ),
-
-            where(
-              "role",
-              "==",
-              "customer"
-            )
-
-          )
-        );
-
-
-      for (
-        const userDoc
-        of usersSnapshot.docs
-      ) {
-
-        await addDoc(
-          collection(
-            db,
-            "notifications"
-          ),
-          {
-
-            userId:
-              userDoc.id,
-
-            type:
-              "announcement",
-
-            title:
-              title,
-
-            body:
-              body,
-
-            url:
-              "/index.html",
-
-            createdAt:
-              serverTimestamp(),
-
-            read:
-              false
-
-          }
-        );
-
-      }
-
-
-      await addDoc(
-        collection(
-          db,
-          "announcements"
-        ),
-        {
-
-          title:
-            title,
-
-          body:
-            body,
-
-          createdAt:
-            serverTimestamp()
-
-        }
-      );
-
-
-      if ($("amsg")) {
-
-        $("amsg").textContent =
-          `Announcement created for ${usersSnapshot.size} users.`;
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        "Announcement failed:",
-        error
-      );
-
-
-      if ($("amsg")) {
-
-        $("amsg").textContent =
-          error.message;
-
-      }
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   AUTH STATE
-========================================================= */
-
-onAuthStateChanged(
-  auth,
-  async (user) => {
-
-    if (user) {
+      /* Send REAL browser push */
 
       try {
 
-        await ensureUser(
-          user
-        );
+        const pushResult =
+          await sendServerPush({
+
+            type:
+              "order_approved",
+
+            userId:
+              order.userId,
+
+            title:
+              "Payment approved!",
+
+            message:
+              `${order.panelTitle} is now ready. Open Your Orders to download it and view setup.`,
+
+            url:
+              "/orders.html"
+
+          });
 
 
-        await saveToken(
-          user
-        );
-
-
-        if ($("name")) {
-
-          $("name").textContent =
-            user.displayName ||
-            "Account";
-
-        }
-
-
-        if ($("email")) {
-
-          $("email").textContent =
-            user.email ||
-            "";
-
-        }
-
-
-        await orders(
-          user
-        );
-
-
-        await notifications(
-          user
-        );
-
-      } catch (error) {
-
-        console.error(
-          "User initialization failed:",
-          error
-        );
-
-      }
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   INITIAL PAGE LOAD
-========================================================= */
-
-panels();
-
-checkout();
-
-adminPanels();
-
-pending();
+        console.log(
+          "Approval push sent:",
+          pushResult
