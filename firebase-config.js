@@ -1,5 +1,5 @@
 export const firebaseConfig = {
-  apiKey: "AIzaSyBEyGSELXPv1cs3EOU8FJFzlfprX47FxA",
+  apiKey: "AIzaSyBEyGSELXPv1cs3EO8U3FJFzlfprX47FxA",
   authDomain: "blaze-panels.firebaseapp.com",
   projectId: "blaze-panels",
   storageBucket: "blaze-panels.firebasestorage.app",
